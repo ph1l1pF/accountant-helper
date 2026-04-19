@@ -15,6 +15,7 @@ Then open http://localhost:7860 in your browser.
 from __future__ import annotations
 
 import io
+import json
 import os
 import re
 import shutil
@@ -33,7 +34,7 @@ import openpyxl
 import pandas as pd
 import pdfplumber
 import pytesseract
-from flask import Flask, abort, jsonify, request, send_file, send_from_directory
+from flask import Flask, Response, abort, jsonify, request, send_file, send_from_directory
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from PIL import Image
@@ -974,54 +975,95 @@ def index():
     return send_from_directory("static", "index.html")
 
 
+def _ndjson(obj: dict) -> str:
+    return json.dumps(obj) + "\n"
+
+
 @app.post("/api/match")
 def api_match():
-    try:
-        csv_file = request.files.get("csvFile")
-        receipt_files = request.files.getlist("receiptFiles")
+    """
+    Streams progress events as newline-delimited JSON (NDJSON) while OCR runs,
+    so the frontend can show a live progress bar. The final line is either
+    {"type":"result", ...} on success or {"type":"error", ...} on failure.
+    """
+    csv_file = request.files.get("csvFile")
+    receipt_files = request.files.getlist("receiptFiles")
 
-        if not csv_file:
-            return jsonify({"error": "csvFile is required"}), 400
-        if not receipt_files:
-            return jsonify({"error": "At least one receipt file is required"}), 400
+    if not csv_file:
+        return jsonify({"error": "csvFile is required"}), 400
+    if not receipt_files:
+        return jsonify({"error": "At least one receipt file is required"}), 400
 
-        log.info("Parsing CSV: %s", csv_file.filename)
-        transactions = csv_parser.parse(csv_file.read())
+    # Read uploads fully inside the request context — the streaming generator
+    # below runs after the request has been consumed, so `request.files` would
+    # no longer be accessible there.
+    csv_bytes = csv_file.read()
+    uploaded: list[tuple[str, bytes]] = [
+        (f.filename, f.read()) for f in receipt_files
+    ]
 
-        if not transactions:
-            return jsonify({
-                "error": "No valid transactions found in CSV. "
-                         "Check that column headers include a Date and Amount (or Debit/Credit)."
-            }), 400
+    def stream():
+        try:
+            yield _ndjson({"type": "progress", "stage": "parsing_csv"})
+            log.info("Parsing CSV: %s", csv_file.filename)
+            transactions = csv_parser.parse(csv_bytes)
 
-        # Save uploaded receipts to a new session so the UI can preview them
-        session_id, session_dir = session_store.create_session()
-        log.info("Parsed %d transactions. Running OCR on %d receipts (session %s)…",
-                 len(transactions), len(receipt_files), session_id[:8])
+            if not transactions:
+                yield _ndjson({
+                    "type": "error",
+                    "error": "No valid transactions found in CSV. "
+                             "Check that column headers include a Date and "
+                             "Amount (or Debit/Credit).",
+                })
+                return
 
-        receipts = []
-        for file in receipt_files:
-            content = file.read()
-            stored_name = session_store.save_file(session_dir, file.filename, content)
-            receipts.append(ocr_service.extract(content, stored_name))
+            session_id, session_dir = session_store.create_session()
+            total = len(uploaded)
+            log.info("Parsed %d transactions. Running OCR on %d receipts (session %s)…",
+                     len(transactions), total, session_id[:8])
 
-        log.info("OCR complete. Running matching…")
-        results = matching_service.match(transactions, receipts)
+            yield _ndjson({
+                "type": "progress", "stage": "ocr_start",
+                "transactions": len(transactions), "total": total,
+            })
 
-        matched_count = sum(1 for r in results if r["confidence"] != "None")
-        log.info("Done. Matched %d of %d transactions.", matched_count, len(transactions))
+            receipts = []
+            for idx, (filename, content) in enumerate(uploaded, start=1):
+                stored_name = session_store.save_file(session_dir, filename, content)
+                receipts.append(ocr_service.extract(content, stored_name))
+                yield _ndjson({
+                    "type": "progress", "stage": "ocr",
+                    "current": idx, "total": total, "file": filename,
+                })
 
-        # Opportunistic cleanup of old sessions
-        removed = session_store.cleanup_expired()
-        if removed:
-            log.info("Cleaned up %d expired sessions.", removed)
+            yield _ndjson({"type": "progress", "stage": "matching"})
+            log.info("OCR complete. Running matching…")
+            results = matching_service.match(transactions, receipts)
 
-        return jsonify({"sessionId": session_id, "results": results})
+            matched_count = sum(1 for r in results if r["confidence"] != "None")
+            log.info("Done. Matched %d of %d transactions.", matched_count, len(transactions))
 
-    except Exception as exc:
-        log.error("Request failed: %s", exc)
-        traceback.print_exc()
-        return jsonify({"error": str(exc)}), 500
+            removed = session_store.cleanup_expired()
+            if removed:
+                log.info("Cleaned up %d expired sessions.", removed)
+
+            yield _ndjson({
+                "type": "result",
+                "sessionId": session_id,
+                "results": results,
+            })
+
+        except Exception as exc:
+            log.error("Request failed: %s", exc)
+            traceback.print_exc()
+            yield _ndjson({"type": "error", "error": str(exc)})
+
+    # X-Accel-Buffering disables proxy buffering (nginx) so events stream live.
+    return Response(
+        stream(),
+        mimetype="application/x-ndjson",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/api/receipt/<session_id>/<path:filename>")
