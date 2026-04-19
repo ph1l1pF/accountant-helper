@@ -37,7 +37,8 @@ body{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;color:#0f172a;bac
 .stitle{font-size:14px;font-weight:600}
 .shint{font-size:11px;color:#94a3b8;margin-top:2px}
 .dz{display:flex;flex-direction:column;align-items:center;gap:7px;padding:16px;border:2px dashed var(--border);border-radius:8px;cursor:pointer;transition:all .15s}
-.dz:hover{border-color:var(--pri);background:var(--pri-bg)}
+.dz:hover,.dz.drag-over,#csvArea.drag-over .dz{border-color:var(--pri);background:var(--pri-bg)}
+.dz.drag-over,#csvArea.drag-over .dz{border-style:solid;box-shadow:0 0 0 4px var(--pri-bg)}
 .dz span{font-size:12px;color:#64748b}
 input[type=file]{display:none}
 .fchip{display:flex;align-items:center;gap:8px;padding:9px 11px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)}
@@ -201,14 +202,14 @@ td{padding:10px 14px;vertical-align:middle}
             <input id="csvInput" type="file" accept=".csv" onchange="handleCsv(this)">
           </div>
         </div>
-        <div class="usec">
+        <div class="usec" id="recDropZone">
           <div class="shdr">
             <svg class="sico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
-            <div><div class="stitle">Receipt documents</div><div class="shint">JPG, PNG, TIFF, PDF — select all at once</div></div>
+            <div><div class="stitle">Receipt documents</div><div class="shint">JPG, PNG, TIFF, PDF — drop files or a folder</div></div>
           </div>
           <label class="dz" for="recInput">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><polyline points="9 14 12 11 15 14"/></svg>
-            <span id="recLabel">Select receipt folder or files</span>
+            <span id="recLabel">Drop receipts here or click to select</span>
           </label>
           <input id="recInput" type="file" accept=".jpg,.jpeg,.png,.tiff,.tif,.bmp,.pdf" multiple onchange="handleRec(this)">
           <div id="recList"></div>
@@ -303,9 +304,9 @@ const fmtAmt=(a,c='EUR')=>new Intl.NumberFormat('en-US',{style:'currency',curren
 const fmtDate=d=>new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 const fmtB=b=>b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(1)+' MB';
 
-function handleCsv(inp){
-  csvF=inp.files[0];
-  if(!csvF)return;
+function setCsvFile(f){
+  if(!f)return;
+  csvF=f;
   document.getElementById('csvArea').innerHTML=`<div class="fchip">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--pri)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
     <span class="fcname">${csvF.name}</span><span class="fcsz">${fmtB(csvF.size)}</span>
@@ -313,18 +314,88 @@ function handleCsv(inp){
   </div>`;
   chk();
 }
+function handleCsv(inp){ setCsvFile(inp.files[0]); }
 function clrCsv(){
   csvF=null;
   document.getElementById('csvArea').innerHTML=`<label class="dz" for="csvInput"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>Select CSV file</span></label><input id="csvInput" type="file" accept=".csv" onchange="handleCsv(this)">`;
   chk();
 }
-function handleRec(inp){
-  recFs=Array.from(inp.files);
+function setReceiptFiles(files){
+  recFs=files;
   document.getElementById('recLabel').textContent=recFs.length+' file'+(recFs.length===1?'':'s')+' selected — click to change';
   document.getElementById('recList').innerHTML=recFs.length?`<div class="rlist">${recFs.map((f,i)=>`<div class="ri"><span class="rname" title="${f.name}">${f.name}</span><span>${fmtB(f.size)}</span></div>`).join('')}</div>`:'';
   chk();
 }
+function handleRec(inp){ setReceiptFiles(Array.from(inp.files)); }
 function chk(){document.getElementById('runBtn').disabled=!(csvF&&recFs.length);}
+
+// ── Drag & Drop ─────────────────────────────────────────────────────
+const ACCEPTED_RECEIPT_EXT=['.jpg','.jpeg','.png','.tiff','.tif','.bmp','.pdf'];
+const hasExt=(name,exts)=>{const n=name.toLowerCase();return exts.some(e=>n.endsWith(e));};
+
+// Walk a DataTransferItem folder tree and return a flat File[].
+async function filesFromDataTransfer(dt){
+  if(!dt)return[];
+  const items=dt.items;
+  if(items&&items.length&&typeof items[0].webkitGetAsEntry==='function'){
+    const entries=[];
+    for(let i=0;i<items.length;i++){
+      if(items[i].kind!=='file')continue;
+      const entry=items[i].webkitGetAsEntry&&items[i].webkitGetAsEntry();
+      if(entry)entries.push(entry);
+    }
+    if(entries.length){
+      const out=[];
+      for(const e of entries)await traverseEntry(e,out);
+      return out;
+    }
+  }
+  return Array.from(dt.files||[]);
+}
+function traverseEntry(entry,out){
+  return new Promise(resolve=>{
+    if(entry.isFile){
+      entry.file(f=>{out.push(f);resolve();},()=>resolve());
+    }else if(entry.isDirectory){
+      const reader=entry.createReader();
+      const readAll=()=>new Promise(res=>reader.readEntries(es=>res(es),()=>res([])));
+      (async()=>{
+        let batch;
+        do{batch=await readAll();for(const e of batch)await traverseEntry(e,out);}while(batch.length);
+        resolve();
+      })();
+    }else{resolve();}
+  });
+}
+
+function setupDropZone(el,onFiles,filter){
+  let depth=0; // handle dragenter/leave nesting from child elements
+  el.addEventListener('dragenter',e=>{e.preventDefault();e.stopPropagation();depth++;el.classList.add('drag-over');});
+  el.addEventListener('dragover',e=>{e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='copy';});
+  el.addEventListener('dragleave',e=>{e.preventDefault();e.stopPropagation();depth--;if(depth<=0){depth=0;el.classList.remove('drag-over');}});
+  el.addEventListener('drop',async e=>{
+    e.preventDefault();e.stopPropagation();depth=0;el.classList.remove('drag-over');
+    const all=await filesFromDataTransfer(e.dataTransfer);
+    const accepted=filter?all.filter(filter):all;
+    if(accepted.length)onFiles(accepted);
+  });
+}
+
+// Prevent the browser from opening files dropped outside the drop zones.
+['dragover','drop'].forEach(ev=>window.addEventListener(ev,e=>{
+  if(e.target.closest&&e.target.closest('[data-dropzone]'))return;
+  e.preventDefault();
+},false));
+
+document.addEventListener('DOMContentLoaded',()=>{
+  const csvArea=document.getElementById('csvArea');
+  csvArea.setAttribute('data-dropzone','');
+  setupDropZone(csvArea,files=>setCsvFile(files[0]),f=>hasExt(f.name,['.csv']));
+
+  const recSection=document.getElementById('recDropZone');
+  recSection.setAttribute('data-dropzone','');
+  setupDropZone(recSection,files=>setReceiptFiles(files),f=>hasExt(f.name,ACCEPTED_RECEIPT_EXT));
+});
 
 function setProgress(pct,fileText,indeterminate=false){
   const fill=document.getElementById('progFill');
@@ -601,7 +672,7 @@ function reset(){
   document.getElementById('resetBtn').style.display='none';
   document.getElementById('exportBtn').style.display='none';
   clrCsv();
-  document.getElementById('recLabel').textContent='Select receipt folder or files';
+  document.getElementById('recLabel').textContent='Drop receipts here or click to select';
   document.getElementById('recList').innerHTML='';
   chk();
 }
