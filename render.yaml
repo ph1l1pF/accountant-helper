@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: docmatcher
+    runtime: docker
+    plan: free
+    envVars:
+      - key: PORT
+        value: "7860"
+      - key: OCR_LANGS
+        value: eng+deu+ell

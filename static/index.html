@@ -1,0 +1,501 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>DocMatcher</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;color:#0f172a;background:#f8fafc;min-height:100vh}
+:root{--pri:#2563eb;--pri-bg:#eff6ff;--pri-d:#1d4ed8;--high:#16a34a;--high-bg:#dcfce7;--med:#d97706;--med-bg:#fef3c7;--low:#ea580c;--low-bg:#ffedd5;--nc:#64748b;--nc-bg:#f1f5f9;--danger:#ef4444;--border:#e2e8f0;--surface:#fff;--bg2:#f1f5f9}
+
+/* Header */
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:60px;background:#fff;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.brand{display:flex;align-items:center;gap:10px}
+.brand svg{color:var(--pri)}
+.bname{font-size:17px;font-weight:600;letter-spacing:-.02em}
+.bsub{font-size:10px;color:#94a3b8;letter-spacing:.06em;text-transform:uppercase}
+#resetBtn{display:none;padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:none;font-size:13px;cursor:pointer;gap:5px;align-items:center}
+#resetBtn:hover{background:var(--bg2)}
+.hdr-actions{display:flex;align-items:center;gap:8px}
+#exportBtn{display:none;padding:6px 14px;border:none;border-radius:8px;background:var(--pri);color:#fff;font-size:13px;font-weight:600;cursor:pointer;gap:5px;align-items:center}
+#exportBtn:hover:not(:disabled){background:var(--pri-d)}
+#exportBtn:disabled{opacity:.55;cursor:wait}
+
+/* Main */
+.main{padding:36px 28px;max-width:1200px;margin:0 auto}
+
+/* Upload */
+.ugrid{display:grid;grid-template-columns:1fr 440px;gap:36px;align-items:start}
+.intro h1{font-size:26px;font-weight:600;letter-spacing:-.025em;line-height:1.2;margin-bottom:10px}
+.intro p{font-size:13px;line-height:1.8;color:#475569;max-width:380px;margin-bottom:28px}
+.steps{display:flex;flex-direction:column;gap:14px}
+.step{display:flex;align-items:center;gap:12px;font-size:13px;color:#475569}
+.snum{width:26px;height:26px;border-radius:50%;background:var(--pri);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.card{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.usec{padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.usec+.usec{border-top:1px solid var(--border)}
+.shdr{display:flex;align-items:flex-start;gap:10px}
+.sico{flex-shrink:0;color:var(--pri);margin-top:2px}
+.stitle{font-size:14px;font-weight:600}
+.shint{font-size:11px;color:#94a3b8;margin-top:2px}
+.dz{display:flex;flex-direction:column;align-items:center;gap:7px;padding:16px;border:2px dashed var(--border);border-radius:8px;cursor:pointer;transition:all .15s}
+.dz:hover{border-color:var(--pri);background:var(--pri-bg)}
+.dz span{font-size:12px;color:#64748b}
+input[type=file]{display:none}
+.fchip{display:flex;align-items:center;gap:8px;padding:9px 11px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)}
+.fcname{flex:1;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fcsz{font-size:10px;color:#94a3b8}
+.xbtn{background:none;border:none;cursor:pointer;color:#94a3b8;display:flex;padding:0}
+.xbtn:hover{color:var(--danger)}
+.rlist{max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px}
+.ri{display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:6px;font-size:11px;color:#64748b}
+.ri:hover{background:var(--bg2)}
+.rname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.subrow{padding:14px 20px 20px;display:flex;justify-content:flex-end;border-top:1px solid var(--border)}
+.runbtn{padding:10px 22px;background:var(--pri);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px}
+.runbtn:hover:not(:disabled){background:var(--pri-d)}
+.runbtn:disabled{opacity:.4;cursor:not-allowed}
+
+/* Loading */
+.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;gap:18px}
+.spin{width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--pri);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#exportBtn svg{transition:transform .15s}
+.ltitle{font-size:20px;font-weight:600}
+.ldesc{font-size:13px;color:#64748b;text-align:center;line-height:1.7}
+
+/* Results */
+.rcard{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.rhdr{padding:18px 24px;border-bottom:1px solid var(--border)}
+.rhdr h2{font-size:16px;font-weight:600}
+.rhdr p{font-size:12px;color:#64748b;margin-top:3px}
+.stats{display:flex;align-items:center;gap:4px;padding:12px 20px;background:var(--bg2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.stat{display:flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px}
+.sv{font-weight:700;font-size:14px}.sl{font-size:10px;opacity:.75}
+.sdiv{width:1px;height:24px;background:var(--border);margin:0 6px}
+.sh{color:var(--high);background:var(--high-bg)}.sm{color:var(--med);background:var(--med-bg)}.sl2{color:var(--low);background:var(--low-bg)}.sn{color:var(--nc);background:var(--nc-bg)}
+.toolbar{display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.swrap{position:relative;flex:1;min-width:180px}
+.sico2{position:absolute;left:9px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:#94a3b8}
+.sinp{width:100%;padding:7px 10px 7px 30px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:#0f172a;background:#fff}
+.sinp:focus{outline:none;border-color:var(--pri)}
+.fchips{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.fchlbl{font-size:11px;color:#94a3b8}
+.fc{padding:3px 11px;border-radius:14px;border:1px solid var(--border);background:none;font-size:11px;cursor:pointer;color:#64748b}
+.fc:hover{border-color:var(--pri);color:var(--pri)}
+.fc.active{background:var(--pri);color:#fff;border-color:var(--pri)}
+.twrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{padding:9px 14px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;border-bottom:1px solid var(--border);background:var(--bg2);white-space:nowrap}
+.thr{text-align:right!important}
+tbody tr{border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
+tbody tr:hover td{background:#fafafa}
+tbody tr.exp td{background:var(--pri-bg)}
+tbody tr.unm td{opacity:.55}
+td{padding:10px 14px;vertical-align:middle}
+.dcell{white-space:nowrap;font-size:11px;color:#94a3b8;font-variant-numeric:tabular-nums}
+.desc{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.amt{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap;display:block;text-align:right}
+.amt.cr{color:var(--high)}
+.rmatch{display:flex;align-items:center;gap:5px;max-width:220px}
+.rmname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--pri);text-decoration:underline;text-decoration-color:transparent;text-underline-offset:2px;transition:text-decoration-color .12s;cursor:pointer}
+.rmatch:hover .rmname{text-decoration-color:var(--pri)}
+.rmeye{flex-shrink:0;color:#94a3b8;width:13px;height:13px;transition:color .12s}
+.rmatch:hover .rmeye{color:var(--pri)}
+.rmamt{font-size:10px;color:#94a3b8;white-space:nowrap}
+.nomatch{font-size:12px;color:#94a3b8;font-style:italic}
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600}
+.badge.high{color:var(--high);background:var(--high-bg)}
+.badge.medium{color:var(--med);background:var(--med-bg)}
+.badge.low{color:var(--low);background:var(--low-bg)}
+.badge.none{color:var(--nc);background:var(--nc-bg)}
+.badge.manual{color:#6b21a8;background:#f3e8ff}
+
+/* Expenses toggle */
+.toggle-wrap{display:flex;align-items:center;gap:7px;font-size:11px;color:#64748b;cursor:pointer;user-select:none}
+.toggle-sw{position:relative;width:28px;height:16px;background:#cbd5e1;border-radius:8px;transition:background .15s;flex-shrink:0}
+.toggle-sw::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;background:#fff;border-radius:50%;transition:transform .15s}
+.toggle-wrap input:checked + .toggle-sw{background:var(--pri)}
+.toggle-wrap input:checked + .toggle-sw::after{transform:translateX(12px)}
+.toggle-wrap input{display:none}
+
+/* Assign button in suggestions */
+.assign-btn{margin-left:auto;padding:3px 10px;border:1px solid var(--pri);border-radius:5px;background:#fff;color:var(--pri);font-size:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:3px;transition:all .12s}
+.assign-btn:hover{background:var(--pri);color:#fff}
+.exbtn{background:none;border:none;cursor:pointer;color:#94a3b8;display:flex;padding:2px;border-radius:4px}
+.exbtn:hover{color:var(--pri)}
+.altrow td{padding:0!important}
+.altpanel{padding:10px 24px 14px 38px;background:var(--pri-bg);border-bottom:1px solid #bfdbfe;animation:sd .15s ease-out}
+@keyframes sd{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.atitle{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#64748b}
+.alist{display:flex;flex-direction:column;gap:4px;margin-top:7px}
+.aitem{display:flex;align-items:center;gap:7px;font-size:11px;color:#475569;padding:5px 9px;background:#fff;border-radius:6px;border:1px solid var(--border);cursor:pointer;transition:border-color .12s,background .12s}
+.aitem:hover{border-color:var(--pri);background:var(--pri-bg)}
+.aname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aamt,.adt{font-size:10px;color:#94a3b8}
+.empty{display:flex;flex-direction:column;align-items:center;padding:48px;color:#94a3b8;gap:8px;font-size:13px}
+.notice{display:flex;align-items:flex-start;gap:8px;padding:10px 14px;background:#fef9c3;border-bottom:1px solid #fde047;font-size:11px;color:#713f12;line-height:1.6}
+
+/* ── Preview Drawer ── */
+.backdrop{position:fixed;inset:0;background:rgba(15,23,42,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:200}
+.backdrop.open{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;width:620px;max-width:100vw;height:100vh;background:#fff;box-shadow:-8px 0 32px rgba(0,0,0,.12);transform:translateX(100%);transition:transform .25s ease;z-index:201;display:flex;flex-direction:column}
+.drawer.open{transform:translateX(0)}
+.drawer-hdr{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+.drawer-title-wrap{min-width:0;flex:1}
+.drawer-title{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drawer-meta{font-size:11px;color:#64748b;margin-top:3px}
+.drawer-meta span{display:inline-flex;align-items:center;gap:4px;margin-right:10px}
+.drawer-meta .dmv{font-weight:600;color:#0f172a}
+.drawer-close{background:none;border:none;cursor:pointer;color:#64748b;padding:6px;border-radius:6px;display:flex;flex-shrink:0}
+.drawer-close:hover{background:var(--bg2);color:#0f172a}
+.drawer-body{flex:1;overflow:auto;background:#f1f5f9;display:flex;align-items:flex-start;justify-content:center;padding:16px}
+.drawer-body iframe{width:100%;height:100%;border:none;background:#fff;border-radius:8px;min-height:500px}
+.drawer-body img{max-width:100%;max-height:100%;object-fit:contain;background:#fff;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.drawer-body .unsupported{padding:40px;text-align:center;color:#64748b;font-size:13px}
+</style></head><body>
+<div class="hdr">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    <div><div class="bname">DocMatcher</div><div class="bsub">Tax Document Reconciliation</div></div>
+  </div>
+  <div class="hdr-actions">
+    <button id="exportBtn" onclick="exportResults()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export for accountant
+    </button>
+    <button id="resetBtn" onclick="reset()">↺ New session</button>
+  </div>
+</div>
+<div class="main">
+
+  <!-- Upload -->
+  <div id="uploadView">
+    <div class="ugrid">
+      <div class="intro">
+        <h1>Match transactions<br>to receipts</h1>
+        <p>Upload your bank statement CSV and receipt files. Tesseract OCR extracts amounts and dates from each document, then matches every transaction to the correct receipt.</p>
+        <div class="steps">
+          <div class="step"><div class="snum">1</div>Export bank statement as CSV</div>
+          <div class="step"><div class="snum">2</div>Select the receipts folder</div>
+          <div class="step"><div class="snum">3</div>Review and confirm matches</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="usec">
+          <div class="shdr">
+            <svg class="sico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            <div><div class="stitle">Bank statement</div><div class="shint">CSV export from your bank</div></div>
+          </div>
+          <div id="csvArea">
+            <label class="dz" for="csvInput">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span>Select CSV file</span>
+            </label>
+            <input id="csvInput" type="file" accept=".csv" onchange="handleCsv(this)">
+          </div>
+        </div>
+        <div class="usec">
+          <div class="shdr">
+            <svg class="sico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+            <div><div class="stitle">Receipt documents</div><div class="shint">JPG, PNG, TIFF, PDF — select all at once</div></div>
+          </div>
+          <label class="dz" for="recInput">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><polyline points="9 14 12 11 15 14"/></svg>
+            <span id="recLabel">Select receipt folder or files</span>
+          </label>
+          <input id="recInput" type="file" accept=".jpg,.jpeg,.png,.tiff,.tif,.bmp,.pdf" multiple onchange="handleRec(this)">
+          <div id="recList"></div>
+        </div>
+        <div class="subrow">
+          <button class="runbtn" id="runBtn" disabled onclick="runMatch()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Run matching
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loadingView" style="display:none">
+    <div class="loading">
+      <div class="spin"></div>
+      <div class="ltitle">Processing documents</div>
+      <div class="ldesc">Running OCR on receipts and matching against transactions…<br>Large files may take a moment.</div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="resultsView" style="display:none">
+    <div class="rcard">
+      <div class="rhdr"><h2>Matching results</h2><p>Click any row to see alternative candidates</p></div>
+      <div class="notice">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Real Tesseract OCR is running on the server. Amounts and dates are extracted from the actual file contents.
+      </div>
+      <div class="stats" id="stats"></div>
+      <div class="toolbar">
+        <div class="swrap">
+          <svg class="sico2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="sinp" type="text" placeholder="Search transactions…" oninput="doFilter(this.value)">
+        </div>
+        <label class="toggle-wrap" title="Hide credit transactions (income)">
+          <input type="checkbox" id="expensesOnly" checked onchange="toggleExpenses(this.checked)">
+          <span class="toggle-sw"></span>
+          <span>Expenses only</span>
+        </label>
+        <div class="fchips">
+          <span class="fchlbl">Confidence:</span>
+          <button class="fc active" onclick="setCf('All',this)">All</button>
+          <button class="fc" onclick="setCf('High',this)">High</button>
+          <button class="fc" onclick="setCf('Medium',this)">Medium</button>
+          <button class="fc" onclick="setCf('Low',this)">Low</button>
+          <button class="fc" onclick="setCf('None',this)">None</button>
+        </div>
+      </div>
+      <div class="twrap">
+        <table><thead><tr>
+          <th>Date</th><th>Description</th><th class="thr">Amount</th>
+          <th>Matched receipt</th><th>Confidence</th><th></th>
+        </tr></thead>
+        <tbody id="tbody"></tbody></table>
+        <div id="empty" class="empty" style="display:none">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+          No transactions match your filter.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Preview Drawer ── -->
+<div class="backdrop" id="backdrop" onclick="closePreview()"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+  <div class="drawer-hdr">
+    <div class="drawer-title-wrap">
+      <div class="drawer-title" id="drawerTitle">—</div>
+      <div class="drawer-meta" id="drawerMeta"></div>
+    </div>
+    <button class="drawer-close" onclick="closePreview()" aria-label="Close preview">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<script>
+let csvF=null,recFs=[],allR=[],cf='All',sq='',exp=null,sessionId=null,expensesOnly=true;
+const fmtAmt=(a,c='EUR')=>new Intl.NumberFormat('en-US',{style:'currency',currency:c,minimumFractionDigits:2}).format(a);
+const fmtDate=d=>new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+const fmtB=b=>b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(1)+' MB';
+
+function handleCsv(inp){
+  csvF=inp.files[0];
+  if(!csvF)return;
+  document.getElementById('csvArea').innerHTML=`<div class="fchip">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--pri)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+    <span class="fcname">${csvF.name}</span><span class="fcsz">${fmtB(csvF.size)}</span>
+    <button class="xbtn" onclick="clrCsv()"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>`;
+  chk();
+}
+function clrCsv(){
+  csvF=null;
+  document.getElementById('csvArea').innerHTML=`<label class="dz" for="csvInput"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>Select CSV file</span></label><input id="csvInput" type="file" accept=".csv" onchange="handleCsv(this)">`;
+  chk();
+}
+function handleRec(inp){
+  recFs=Array.from(inp.files);
+  document.getElementById('recLabel').textContent=recFs.length+' file'+(recFs.length===1?'':'s')+' selected — click to change';
+  document.getElementById('recList').innerHTML=recFs.length?`<div class="rlist">${recFs.map((f,i)=>`<div class="ri"><span class="rname" title="${f.name}">${f.name}</span><span>${fmtB(f.size)}</span></div>`).join('')}</div>`:'';
+  chk();
+}
+function chk(){document.getElementById('runBtn').disabled=!(csvF&&recFs.length);}
+
+async function runMatch(){
+  document.getElementById('uploadView').style.display='none';
+  document.getElementById('loadingView').style.display='block';
+  const fd=new FormData();
+  fd.append('csvFile',csvF,csvF.name);
+  recFs.forEach(f=>fd.append('receiptFiles',f,f.name));
+  try{
+    const res=await fetch('/api/match',{method:'POST',body:fd});
+    const data=await res.json();
+    if(!res.ok){alert('Error: '+(data.error||res.statusText));reset();return;}
+    sessionId=data.sessionId;
+    allR=data.results;
+    showResults();
+  }catch(e){alert('Network error: '+e.message);reset();}
+}
+
+function showResults(){
+  document.getElementById('loadingView').style.display='none';
+  document.getElementById('resultsView').style.display='block';
+  document.getElementById('resetBtn').style.display='flex';
+  document.getElementById('exportBtn').style.display='flex';
+  renderStats();renderTable();
+}
+
+function renderStats(){
+  const visible=allR.filter(r=>!expensesOnly||r.transaction.type==='Debit');
+  const s={total:0,high:0,medium:0,low:0,none:0,manual:0};
+  visible.forEach(r=>{s.total++;const c=r.confidence.toLowerCase();if(s[c]!==undefined)s[c]++;});
+  document.getElementById('stats').innerHTML=`
+    <span class="stat" style="font-size:13px"><span class="sv">${s.total}</span><span class="sl">&nbsp;total</span></span>
+    <div class="sdiv"></div>
+    <span class="stat sh"><span class="sv">${s.high}</span><span class="sl">&nbsp;High</span></span>
+    <span class="stat sm"><span class="sv">${s.medium}</span><span class="sl">&nbsp;Medium</span></span>
+    <span class="stat sl2"><span class="sv">${s.low}</span><span class="sl">&nbsp;Low</span></span>
+    ${s.manual?`<span class="stat" style="color:#6b21a8;background:#f3e8ff"><span class="sv">${s.manual}</span><span class="sl">&nbsp;Manual</span></span>`:''}
+    <span class="stat sn"><span class="sv">${s.none}</span><span class="sl">&nbsp;Unmatched</span></span>`;
+}
+
+function renderTable(){
+  const q=sq.toLowerCase();
+  const rows=allR.filter(r=>{
+    if(expensesOnly&&r.transaction.type!=='Debit')return false;
+    const cm=cf==='All'||r.confidence===cf;
+    const sm=!q||r.transaction.description.toLowerCase().includes(q)||
+      r.transaction.amount.toString().includes(q)||
+      (r.matchedReceipt?.fileName.toLowerCase().includes(q));
+    return cm&&sm;
+  });
+  document.getElementById('empty').style.display=rows.length?'none':'flex';
+  document.getElementById('tbody').innerHTML=rows.map(r=>{
+    const t=r.transaction,isE=exp===t.id,bc=r.confidence.toLowerCase();
+    const hasAlts=r.alternativeCandidates.length>0;
+    const isUnmatched=r.confidence==='None';
+
+    const rc=r.matchedReceipt
+      ?`<div class="rmatch" onclick="openPreview('${encodeURIComponent(r.matchedReceipt.fileName)}', ${r.matchedReceipt.extractedAmount}, ${r.matchedReceipt.extractedDate?`'${r.matchedReceipt.extractedDate}'`:'null'}, '${t.currency}');event.stopPropagation()" title="Click to preview">
+         <svg class="rmeye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+         <span class="rmname">${r.matchedReceipt.fileName}</span>
+         ${r.matchedReceipt.extractedAmount!==null?`<span class="rmamt">(${fmtAmt(r.matchedReceipt.extractedAmount,t.currency)})</span>`:''}</div>`
+      :(hasAlts?`<span class="nomatch">— ${r.alternativeCandidates.length} suggestion${r.alternativeCandidates.length===1?'':'s'}</span>`:`<span class="nomatch">— No match</span>`);
+
+    const altTitle=isUnmatched?'Best guesses — click to preview, Assign to mark as match':'Alternative candidates — click to preview';
+    const altP=isE&&hasAlts?`<tr class="altrow"><td colspan="6">
+      <div class="altpanel"><div class="atitle">${altTitle}</div>
+      <div class="alist">${r.alternativeCandidates.map((a,ai)=>`
+        <div class="aitem" onclick="openPreview('${encodeURIComponent(a.fileName)}', ${a.extractedAmount}, ${a.extractedDate?`'${a.extractedDate}'`:'null'}, '${t.currency}');event.stopPropagation()">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="aname">${a.fileName}</span>
+        ${a.extractedAmount!==null?`<span class="aamt">${fmtAmt(a.extractedAmount,t.currency)}</span>`:''}
+        ${a.extractedDate?`<span class="adt">${fmtDate(a.extractedDate)}</span>`:''}
+        ${isUnmatched?`<button class="assign-btn" onclick="assignMatch('${t.id}',${ai});event.stopPropagation()" title="Assign as match">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Assign</button>`:''}
+        </div>`).join('')}
+      </div></div></td></tr>`:'';
+
+    return `<tr class="${isE?'exp':''} ${isUnmatched?'unm':''}" onclick="tog('${t.id}')">
+      <td><span class="dcell">${fmtDate(t.date)}</span></td>
+      <td><span class="desc" title="${t.description}">${t.description}</span></td>
+      <td><span class="amt ${t.type==='Credit'?'cr':''}">${t.type==='Debit'?'−':'+'} ${fmtAmt(t.amount,t.currency)}</span></td>
+      <td>${rc}</td>
+      <td><span class="badge ${bc}">${r.confidence}</span></td>
+      <td>${hasAlts?`<button class="exbtn" onclick="tog('${t.id}');event.stopPropagation()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        ${isE?'<polyline points="18 15 12 9 6 15"/>':'<polyline points="6 9 12 15 18 9"/>'}</svg></button>`:''}</td>
+    </tr>${altP}`;
+  }).join('');
+}
+
+function tog(id){exp=exp===id?null:id;renderTable();}
+function doFilter(v){sq=v;renderTable();}
+function setCf(v,btn){cf=v;document.querySelectorAll('.fc').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderTable();}
+function toggleExpenses(v){expensesOnly=v;renderStats();renderTable();}
+
+// Manual assignment: move a best-guess suggestion into the matched slot
+function assignMatch(txnId, altIndex){
+  const r=allR.find(x=>x.transaction.id===txnId);
+  if(!r||!r.alternativeCandidates[altIndex])return;
+  const picked=r.alternativeCandidates[altIndex];
+  r.matchedReceipt=picked;
+  r.confidence='Manual';
+  r.alternativeCandidates=r.alternativeCandidates.filter((_,i)=>i!==altIndex);
+  exp=null; // collapse after assignment
+  renderStats();renderTable();
+}
+
+async function exportResults(){
+  if(!sessionId||!allR.length)return;
+  const btn=document.getElementById('exportBtn');
+  btn.disabled=true;
+  const originalHTML=btn.innerHTML;
+  btn.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin .8s linear infinite"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg> Building…';
+  try{
+    const res=await fetch('/api/export',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sessionId,results:allR}),
+    });
+    if(!res.ok){
+      const err=await res.json().catch(()=>({error:res.statusText}));
+      alert('Export failed: '+(err.error||res.statusText));
+      return;
+    }
+    const blob=await res.blob();
+    const filename=(res.headers.get('Content-Disposition')||'')
+      .match(/filename=([^;]+)/)?.[1]?.replace(/"/g,'')
+      || 'docmatcher-export.zip';
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=filename;
+    document.body.appendChild(a);a.click();a.remove();
+    URL.revokeObjectURL(url);
+  }catch(e){
+    alert('Export error: '+e.message);
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML=originalHTML;
+  }
+}
+
+// ── Preview drawer ───────────────────────────────────────────────────
+function openPreview(encodedFileName, amount, date, currency){
+  if(!sessionId){return;}
+  const fileName=decodeURIComponent(encodedFileName);
+  const url=`/api/receipt/${sessionId}/${encodedFileName}`;
+  const ext=fileName.split('.').pop().toLowerCase();
+
+  document.getElementById('drawerTitle').textContent=fileName;
+  const metaParts=[];
+  if(amount!==null&&amount!==undefined)metaParts.push(`<span>Amount <span class="dmv">${fmtAmt(amount,currency)}</span></span>`);
+  if(date)metaParts.push(`<span>Date <span class="dmv">${fmtDate(date)}</span></span>`);
+  document.getElementById('drawerMeta').innerHTML=metaParts.join('');
+
+  let preview='';
+  if(ext==='pdf'){
+    preview=`<iframe src="${url}" title="${fileName}"></iframe>`;
+  }else if(['jpg','jpeg','png','gif','webp','bmp','tiff','tif'].includes(ext)){
+    preview=`<img src="${url}" alt="${fileName}">`;
+  }else{
+    preview=`<div class="unsupported">Preview not available for .${ext} files.<br><a href="${url}" target="_blank" style="color:var(--pri)">Open in new tab →</a></div>`;
+  }
+  document.getElementById('drawerBody').innerHTML=preview;
+
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('backdrop').classList.add('open');
+}
+
+function closePreview(){
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('backdrop').classList.remove('open');
+  // Clear iframe src to stop rendering and free memory
+  setTimeout(()=>{document.getElementById('drawerBody').innerHTML='';},250);
+}
+
+document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closePreview();});
+function reset(){
+  closePreview();
+  csvF=null;recFs=[];allR=[];cf='All';sq='';exp=null;sessionId=null;
+  document.getElementById('uploadView').style.display='block';
+  document.getElementById('loadingView').style.display='none';
+  document.getElementById('resultsView').style.display='none';
+  document.getElementById('resetBtn').style.display='none';
+  document.getElementById('exportBtn').style.display='none';
+  clrCsv();
+  document.getElementById('recLabel').textContent='Select receipt folder or files';
+  document.getElementById('recList').innerHTML='';
+  chk();
+}
+</script></body></html>
