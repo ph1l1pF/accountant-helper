@@ -386,6 +386,11 @@ class OcrService:
 
     IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp"}
 
+    # Cap the long side of input images before OCR to bound memory usage.
+    # 2400px is still plenty for text recognition on receipts and keeps
+    # each decoded image well under ~20 MB in RAM.
+    MAX_IMAGE_DIMENSION = 2400
+
     AMOUNT_MIN = 0.5
     AMOUNT_MAX = 999_999
 
@@ -408,13 +413,40 @@ class OcrService:
                     return "\n".join(page.extract_text() or "" for page in pdf.pages)
 
             if extension in self.IMAGE_EXTENSIONS:
-                image = Image.open(io.BytesIO(content))
-                return pytesseract.image_to_string(image, lang=OCR_LANGUAGES)
+                with Image.open(io.BytesIO(content)) as image:
+                    prepared = self._prepare_image_for_ocr(image)
+                    try:
+                        return pytesseract.image_to_string(prepared, lang=OCR_LANGUAGES)
+                    finally:
+                        prepared.close()
 
         except Exception as exc:
             log.warning("OCR failed for extension %s: %s", extension, exc)
 
         return ""
+
+    def _prepare_image_for_ocr(self, image: "Image.Image") -> "Image.Image":
+        """
+        Down-scales very large images and converts to grayscale.
+        Keeps memory usage bounded and — counter-intuitively — often
+        improves OCR accuracy because Tesseract prefers modest resolutions
+        with good contrast.
+        """
+        image.load()  # decode pixels now so we can safely close the source
+
+        longest = max(image.size)
+        if longest > self.MAX_IMAGE_DIMENSION:
+            scale = self.MAX_IMAGE_DIMENSION / longest
+            new_size = (int(image.size[0] * scale), int(image.size[1] * scale))
+            resized = image.resize(new_size, Image.LANCZOS)
+        else:
+            resized = image.copy()
+
+        # Grayscale cuts memory by ~3× vs RGB and doesn't hurt OCR on text.
+        gray = resized.convert("L")
+        if gray is not resized:
+            resized.close()
+        return gray
 
     # ── Amount extraction ──────────────────────────────────────────────
 

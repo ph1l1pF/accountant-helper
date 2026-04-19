@@ -18,5 +18,8 @@ EXPOSE 7860
 
 CMD ["gunicorn", "server:app", \
      "--bind", "0.0.0.0:7860", \
-     "--workers", "2", \
-     "--timeout", "120"]
+     "--workers", "1", \
+     "--threads", "2", \
+     "--timeout", "300", \
+     "--max-requests", "25", \
+     "--max-requests-jitter", "5"]
