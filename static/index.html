@@ -205,13 +205,13 @@ td{padding:10px 14px;vertical-align:middle}
         <div class="usec" id="recDropZone">
           <div class="shdr">
             <svg class="sico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
-            <div><div class="stitle">Receipt documents</div><div class="shint">JPG, PNG, TIFF, PDF — drop files or a folder</div></div>
+            <div><div class="stitle">Receipt documents</div><div class="shint">JPG, PNG, HEIC, TIFF, PDF — drop files or a folder</div></div>
           </div>
           <label class="dz" for="recInput">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><polyline points="9 14 12 11 15 14"/></svg>
             <span id="recLabel">Drop receipts here or click to select</span>
           </label>
-          <input id="recInput" type="file" accept=".jpg,.jpeg,.png,.tiff,.tif,.bmp,.pdf" multiple onchange="handleRec(this)">
+          <input id="recInput" type="file" accept=".jpg,.jpeg,.png,.tiff,.tif,.bmp,.heic,.heif,.pdf" multiple onchange="handleRec(this)">
           <div id="recList"></div>
         </div>
         <div class="subrow">
@@ -330,7 +330,7 @@ function handleRec(inp){ setReceiptFiles(Array.from(inp.files)); }
 function chk(){document.getElementById('runBtn').disabled=!(csvF&&recFs.length);}
 
 // ── Drag & Drop ─────────────────────────────────────────────────────
-const ACCEPTED_RECEIPT_EXT=['.jpg','.jpeg','.png','.tiff','.tif','.bmp','.pdf'];
+const ACCEPTED_RECEIPT_EXT=['.jpg','.jpeg','.png','.tiff','.tif','.bmp','.heic','.heif','.pdf'];
 const hasExt=(name,exts)=>{const n=name.toLowerCase();return exts.some(e=>n.endsWith(e));};
 
 // Walk a DataTransferItem folder tree and return a flat File[].

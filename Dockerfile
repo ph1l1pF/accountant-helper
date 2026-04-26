@@ -5,6 +5,7 @@ RUN apt-get update && \
         tesseract-ocr \
         tesseract-ocr-deu \
         tesseract-ocr-ell \
+        libheif1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

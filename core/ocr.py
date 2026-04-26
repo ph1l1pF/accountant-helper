@@ -17,6 +17,11 @@ from typing import Optional
 import pdfplumber
 import pytesseract
 from PIL import Image
+from pillow_heif import register_heif_opener
+
+# Register HEIF/HEIC support once at import time so Image.open() handles
+# iPhone photos (.heic / .heif) transparently.
+register_heif_opener()
 
 from .config import OCR_LANGUAGES
 from .domain import Receipt
@@ -39,7 +44,6 @@ class OcrService:
     PAID_KEYWORD_PATTERN = re.compile(
         r"(?:"
         r"bezah\w{2,6}\s+betrag"       # Bezahlter Betrag (and OCR variants)
-        r"|zahlbetrag"
         r"|(?<![a-z])paid(?:\s+amount)?"
         r"|amount\s+(?:paid|charged)"
         r"|payment\s+(?:amount|received)"
@@ -54,18 +58,28 @@ class OcrService:
     )
 
     # Priority 2 — "total" keywords. Covers English, German, Greek.
+    #
+    # Uses \b...\b word-boundary anchors instead of (?<![a-z]) lookbehinds.
+    # The lookbehind interacts badly with re.IGNORECASE in some Python builds
+    # (IGNORECASE makes [a-z] match uppercase too, which can suppress matches
+    # where the preceding char happens to be a letter like 'A' in 'vA Total').
+    #
+    # Also includes standalone \bamount\b so that POS receipts that show
+    # "Items Sold: 10  Amount  30.20" (without the word "Total") are handled.
     TOTAL_KEYWORD_PATTERN = re.compile(
         r"(?:"
-        r"(?<![a-z])total\s*(?:amount|due|payable)?"
-        r"|grand\s*total"
-        r"|amount\s*due"
-        r"|balance\s*due"
-        r"|gesamt(?:betrag)?"
-        r"|endbetrag"
-        r"|rechnungsbetrag"
-        r"|(?<![a-zäöü])summe"
-        r"|σύνολο"
-        r")\b\s*[:\s]*"
+        r"\btotal\b"                    # "Total", "TOTAL" — but NOT "subtotal"
+        r"|\bgrand\s+total\b"
+        r"|\bamount\b"                  # standalone "Amount" label on a total line
+        r"|\bamount\s+due\b"
+        r"|\bbalance\s+due\b"
+        r"|\bgesamt(?:betrag)?\b"
+        r"|\bendbetrag\b"
+        r"|\brechnungsbetrag\b"
+        r"|\bzahlbetrag\b"
+        r"|\bsumme\b"
+        r"|\bσύνολο"
+        r")\s*[:\s]*"                   # optional colon / whitespace
         r"(?:EUR|€|USD|\$|GBP|£)?\s*"
         rf"({AMOUNT_NUMBER})",
         re.IGNORECASE,
@@ -80,7 +94,8 @@ class OcrService:
 
     # Keywords that mark an amount as HISTORICAL / superseded and should be ignored.
     # E.g. on Airbnb receipts: "Vorheriger Gesamtbetrag" (previous total before adjustment).
-    STALE_AMOUNT_PREFIXES = ("vorherig", "previous", "alt", "old", "original")
+    # Also "sub" to skip "Subtotal" when a proper "Total" follows later.
+    STALE_AMOUNT_PREFIXES = ("vorherig", "previous", "alt", "old", "original", "sub")
 
     # ── Date patterns ──────────────────────────────────────────────────
     DATE_PATTERNS = [
@@ -88,7 +103,7 @@ class OcrService:
         re.compile(r"\b(\d{2}[./]\d{2}[./]\d{4})\b"),
     ]
 
-    IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp"}
+    IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".heic", ".heif"}
 
     # Cap the long side of input images before OCR to bound memory usage.
     # 2400px is still plenty for text recognition on receipts and keeps
@@ -184,9 +199,6 @@ class OcrService:
         results: list[float] = []
         for match in pattern.finditer(text):
             # Check the 40 chars before the match for stale-amount words.
-            context_before = text[max(0, match.start() - 40):match.start()].lower()
-            if any(word in context_before for word in self.STALE_AMOUNT_PREFIXES):
-                continue
             value = parse_number(match.group(group))
             if value is not None and self.AMOUNT_MIN < value < self.AMOUNT_MAX:
                 results.append(value)
