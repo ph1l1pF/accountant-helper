@@ -30,12 +30,23 @@ from flask import (
     send_from_directory,
 )
 
-from core.config import OCR_LANGUAGES, PORT, SESSION_TTL_HOURS, UPLOAD_DIR
+from core.config import DEBUG_PORT, OCR_LANGUAGES, PORT, SESSION_TTL_HOURS, UPLOAD_DIR
 from core.csv_parser import CsvParser
 from core.export import ExportBuilder
 from core.matching import MatchingService
 from core.ocr import OcrService
 from core.sessions import SessionStore
+
+
+# ── Remote debugger ──────────────────────────────────────────────────────
+
+if DEBUG_PORT:
+    import debugpy
+    debugpy.listen(("0.0.0.0", DEBUG_PORT))
+    log_early = logging.getLogger("docmatcher")
+    print(f"⏳ debugpy listening on port {DEBUG_PORT} — attach Cursor now, or press F5")
+    # Uncomment the line below to pause startup until debugger is attached:
+    # debugpy.wait_for_client()
 
 
 # ── Logging ──────────────────────────────────────────────────────────────

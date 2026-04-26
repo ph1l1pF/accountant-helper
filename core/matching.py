@@ -1,15 +1,26 @@
 """
 Matching service: pairs each bank transaction with its best-matching receipt.
 
-Uses a greedy strategy where each receipt can only be assigned to one
-transaction. Transactions without a confident match get a list of best-guess
-suggestions instead.
+Uses a globally-optimal greedy strategy:
+  1. Score EVERY (transaction, receipt) pair up front.
+  2. Sort all pairs globally — best score first.
+  3. Assign greedily from that sorted list (both sides can only be matched once).
+
+This avoids the classic failure of per-transaction-greedy where a transaction
+processed early "steals" a receipt from a later transaction that would have
+been a better fit (e.g. two transactions with the same amount where the one
+with the slightly closer date should win).
+
+Scoring uses three-level confidence (High/Medium/Low) as the primary sort key,
+then days_diff and amount_diff as tiebreakers within each level.
 """
 
 from __future__ import annotations
 
-from dataclasses import asdict
+import math
+from dataclasses import asdict, dataclass
 from datetime import datetime
+from typing import Optional
 
 from .config import (
     AMOUNT_MIN_TOLERANCE,
@@ -21,116 +32,145 @@ from .config import (
 from .domain import BankTransaction, Receipt
 
 
+# ── Internal score representation ────────────────────────────────────────
+
+@dataclass(frozen=True)
+class _Score:
+    """Numeric representation of a (transaction, receipt) match quality."""
+    tier: int           # 3 = High, 2 = Medium, 1 = Low
+    amount_diff: float  # absolute € difference (lower is better)
+    days_diff: float    # calendar days apart (inf when receipt has no date)
+
+    @property
+    def confidence(self) -> str:
+        return {3: "High", 2: "Medium", 1: "Low"}[self.tier]
+
+    def sort_key(self) -> tuple:
+        """Higher tier first; within tier prefer smallest days then smallest amount."""
+        return (-self.tier, self.days_diff, self.amount_diff)
+
+
+# ── Matching service ──────────────────────────────────────────────────────
+
 class MatchingService:
     """Pairs each transaction with its best-matching receipt."""
 
-    CONFIDENCE_SCORE = {"High": 3, "Medium": 2, "Low": 1, "None": 0}
-
-    # How close an amount must be (relative) to still be suggested as a best guess.
+    # Relaxed tolerance for best-guess suggestions on unmatched transactions.
     SUGGESTION_MAX_RELATIVE_DIFF = 0.20     # 20 %
     SUGGESTION_MAX_ABSOLUTE_DIFF = 50.0     # or €50, whichever is larger
     SUGGESTION_LIMIT = 5
 
     def match(self, transactions: list[BankTransaction],
               receipts: list[Receipt]) -> list[dict]:
-        assigned_receipt_names: set[str] = set()
-        results: list[dict] = []
-
+        # ── Phase 1: score every (txn, receipt) pair ──────────────────────
+        scored_pairs: list[tuple[_Score, BankTransaction, Receipt]] = []
         for txn in transactions:
-            ranked = self._rank_candidates(txn, receipts, assigned_receipt_names)
+            for receipt in receipts:
+                score = self._score(txn, receipt)
+                if score is not None:
+                    scored_pairs.append((score, txn, receipt))
 
-            best_receipt, best_confidence = (
-                (ranked[0][0], ranked[0][1]) if ranked else (None, "None")
-            )
+        # ── Phase 2: globally optimal greedy assignment ────────────────────
+        # Sort all pairs by quality so the best matches are assigned first,
+        # regardless of the order transactions appear in the CSV.
+        scored_pairs.sort(key=lambda p: p[0].sort_key())
 
-            if best_receipt is not None:
-                assigned_receipt_names.add(best_receipt.fileName)
-                # For matched rows: alternatives = other receipts that also matched
-                alternatives = [r for r, _ in ranked[1:1 + MAX_ALTERNATIVES]]
+        assigned: dict[str, tuple[Receipt, str]] = {}   # txn.id → (receipt, confidence)
+        used_receipts: set[str] = set()
+
+        for score, txn, receipt in scored_pairs:
+            if txn.id not in assigned and receipt.fileName not in used_receipts:
+                assigned[txn.id] = (receipt, score.confidence)
+                used_receipts.add(receipt.fileName)
+
+        # ── Phase 3: build result rows ────────────────────────────────────
+        results: list[dict] = []
+        for txn in transactions:
+            if txn.id in assigned:
+                matched_receipt, confidence = assigned[txn.id]
+
+                # Alternatives = other receipts that also scored for this txn
+                # but aren't assigned to anyone else.
+                alternatives: list[Receipt] = []
+                for _, t, r in scored_pairs:
+                    if (t.id == txn.id
+                            and r.fileName != matched_receipt.fileName
+                            and r.fileName not in used_receipts):
+                        alternatives.append(r)
+                        if len(alternatives) >= MAX_ALTERNATIVES:
+                            break
             else:
-                # For unmatched rows: alternatives = best-guess suggestions
-                alternatives = self._suggest_for_unmatched(
-                    txn, receipts, assigned_receipt_names
-                )
+                matched_receipt = None
+                confidence = "None"
+                alternatives = self._suggest_for_unmatched(txn, receipts, used_receipts)
 
             results.append({
                 "transaction": asdict(txn),
-                "matchedReceipt": asdict(best_receipt) if best_receipt else None,
-                "confidence": best_confidence,
+                "matchedReceipt": asdict(matched_receipt) if matched_receipt else None,
+                "confidence": confidence,
                 "alternativeCandidates": [asdict(r) for r in alternatives],
             })
 
         return results
 
-    # ── Confident matches ─────────────────────────────────────────────────
+    # ── Scoring ──────────────────────────────────────────────────────────
 
-    def _rank_candidates(self, txn: BankTransaction,
-                         receipts: list[Receipt],
-                         assigned: set[str]) -> list[tuple[Receipt, str]]:
-        scored = [
-            (r, self._calculate_confidence(txn, r))
-            for r in receipts if r.fileName not in assigned
-        ]
-        scored = [(r, c) for r, c in scored if c != "None"]
-        scored.sort(key=lambda pair: self.CONFIDENCE_SCORE[pair[1]], reverse=True)
-        return scored
-
-    def _calculate_confidence(self, txn: BankTransaction, receipt: Receipt) -> str:
+    def _score(self, txn: BankTransaction, receipt: Receipt) -> Optional[_Score]:
+        """Returns a _Score if the receipt is a candidate for this transaction, else None."""
         if receipt.extractedAmount is None:
-            return "None"
+            return None
 
         tolerance = max(txn.amount * AMOUNT_TOLERANCE_PERCENT, AMOUNT_MIN_TOLERANCE)
-        if abs(txn.amount - receipt.extractedAmount) > tolerance:
-            return "None"
+        amount_diff = abs(txn.amount - receipt.extractedAmount)
+        if amount_diff > tolerance:
+            return None
 
         if not receipt.extractedDate:
-            return "Low"
+            return _Score(tier=1, amount_diff=amount_diff, days_diff=math.inf)
 
-        days_delta = abs(
-            (datetime.fromisoformat(txn.date) - datetime.fromisoformat(receipt.extractedDate)).days
+        days_diff = abs(
+            (datetime.fromisoformat(txn.date)
+             - datetime.fromisoformat(receipt.extractedDate)).days
         )
-        if days_delta <= DAYS_TOLERANCE_HIGH:
-            return "High"
-        if days_delta <= DAYS_TOLERANCE_MEDIUM:
-            return "Medium"
-        return "Low"
+        if days_diff <= DAYS_TOLERANCE_HIGH:
+            tier = 3
+        elif days_diff <= DAYS_TOLERANCE_MEDIUM:
+            tier = 2
+        else:
+            tier = 1
+
+        return _Score(tier=tier, amount_diff=amount_diff, days_diff=days_diff)
 
     # ── Best-guess suggestions for unmatched transactions ─────────────────
 
     def _suggest_for_unmatched(self, txn: BankTransaction,
                                receipts: list[Receipt],
-                               assigned: set[str]) -> list[Receipt]:
+                               used: set[str]) -> list[Receipt]:
         """
         Returns up to SUGGESTION_LIMIT receipts ranked by combined similarity score.
-        Considers receipts whose amount is within a relaxed tolerance (20 % or €50).
+        Only considers receipts not already assigned to another transaction.
         """
-        available = [
-            r for r in receipts
-            if r.fileName not in assigned and r.extractedAmount is not None
-        ]
-
         scored: list[tuple[float, Receipt]] = []
-        for receipt in available:
+        for receipt in receipts:
+            if receipt.fileName in used or receipt.extractedAmount is None:
+                continue
+
             amount_diff = abs(txn.amount - receipt.extractedAmount)
             relative_diff = amount_diff / max(txn.amount, 1.0)
 
-            # Skip receipts that are clearly unrelated
             if (relative_diff > self.SUGGESTION_MAX_RELATIVE_DIFF
                     and amount_diff > self.SUGGESTION_MAX_ABSOLUTE_DIFF):
                 continue
 
-            score = self._suggestion_score(txn, receipt, amount_diff)
-            scored.append((score, receipt))
+            scored.append((self._suggestion_score(txn, receipt, amount_diff), receipt))
 
-        # Lower score = better match
-        scored.sort(key=lambda pair: pair[0])
+        scored.sort(key=lambda p: p[0])
         return [r for _, r in scored[:self.SUGGESTION_LIMIT]]
 
     @staticmethod
     def _suggestion_score(txn: BankTransaction, receipt: Receipt,
                           amount_diff: float) -> float:
         """Combined score: amount difference weighted heavily, date proximity as tiebreaker."""
-        amount_component = amount_diff  # euros off
         if receipt.extractedDate:
             days_delta = abs(
                 (datetime.fromisoformat(txn.date)
@@ -138,5 +178,5 @@ class MatchingService:
             )
             date_component = min(days_delta, 365) * 0.05
         else:
-            date_component = 5  # small penalty for missing date
-        return amount_component + date_component
+            date_component = 5
+        return amount_diff + date_component

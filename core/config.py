@@ -15,6 +15,7 @@ from pathlib import Path
 # ── Server / runtime ─────────────────────────────────────────────────────
 
 PORT = int(os.environ.get("PORT", 7860))
+DEBUG_PORT: int | None = int(os.environ.get("DEBUG_PORT")) if os.environ.get("DEBUG_PORT") else None
 
 # Where uploaded receipts are temporarily stored so the UI can preview them.
 # Each match request creates a new session folder under UPLOAD_DIR.
