@@ -644,7 +644,7 @@ function openPreview(encodedFileName, amount, date, currency){
   let preview='';
   if(ext==='pdf'){
     preview=`<iframe src="${url}" title="${fileName}"></iframe>`;
-  }else if(['jpg','jpeg','png','gif','webp','bmp','tiff','tif'].includes(ext)){
+  }else if(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','heic','heif'].includes(ext)){
     preview=`<img src="${url}" alt="${fileName}">`;
   }else{
     preview=`<div class="unsupported">Preview not available for .${ext} files.<br><a href="${url}" target="_blank" style="color:var(--pri)">Open in new tab →</a></div>`;

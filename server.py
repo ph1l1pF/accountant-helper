@@ -173,16 +173,39 @@ def api_match():
 
 @app.get("/api/receipt/<session_id>/<path:filename>")
 def api_receipt(session_id: str, filename: str):
-    """Serves a receipt file from a specific session for in-browser preview."""
+    """
+    Serves a receipt file from a specific session for in-browser preview.
+
+    HEIC/HEIF files are converted to JPEG on the fly because browsers cannot
+    natively decode HEIC. The caller always receives a renderable format.
+    """
     filepath = session_store.get_file_path(session_id, filename)
     if filepath is None:
         abort(404)
+
+    if filepath.suffix.lower() in {".heic", ".heif"}:
+        return _serve_heic_as_jpeg(filepath)
+
     # Inline disposition so PDFs/images render in the browser instead of downloading
     return send_from_directory(
         str(filepath.parent),
         filepath.name,
         as_attachment=False,
     )
+
+
+def _serve_heic_as_jpeg(filepath):
+    """Convert a HEIC/HEIF image to JPEG in memory and return it as a response."""
+    try:
+        from PIL import Image  # pillow_heif opener is registered at import of core.ocr
+        with Image.open(filepath) as img:
+            buf = BytesIO()
+            img.convert("RGB").save(buf, format="JPEG", quality=88)
+            buf.seek(0)
+        return send_file(buf, mimetype="image/jpeg")
+    except Exception as exc:
+        log.warning("HEIC preview conversion failed for %s: %s", filepath.name, exc)
+        abort(500)
 
 
 @app.post("/api/export")
